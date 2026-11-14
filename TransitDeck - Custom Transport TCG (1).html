@@ -1,0 +1,1532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TransitDeck — Custom Transport TCG Collector</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #020617;
+            color: #f8fafc;
+            overflow-x: hidden;
+        }
+        .font-mono-board {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+
+        /* Rarity Glows & Borders */
+        .rarity-Common {
+            border-color: #64748b;
+            box-shadow: 0 4px 20px -4px rgba(100, 116, 139, 0.35);
+        }
+        .rarity-Uncommon {
+            border-color: #10b981;
+            box-shadow: 0 4px 24px -4px rgba(16, 185, 129, 0.45);
+        }
+        .rarity-Rare {
+            border-color: #3b82f6;
+            box-shadow: 0 4px 26px -4px rgba(59, 130, 246, 0.55);
+        }
+        .rarity-Epic {
+            border-color: #a855f7;
+            box-shadow: 0 4px 28px -3px rgba(168, 85, 247, 0.65);
+        }
+        .rarity-Legendary {
+            border-color: #f59e0b;
+            box-shadow: 0 0 32px -2px rgba(245, 158, 11, 0.75);
+        }
+
+        /* Rarity Foil Shimmer Overlay */
+        .foil-Legendary::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(125deg, transparent 30%, rgba(251, 191, 36, 0.18) 48%, rgba(255, 255, 255, 0.25) 50%, rgba(251, 191, 36, 0.18) 52%, transparent 70%);
+            background-size: 200% 200%;
+            animation: foilShimmer 3.5s infinite linear;
+            pointer-events: none;
+            border-radius: inherit;
+        }
+        .foil-Epic::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(125deg, transparent 35%, rgba(192, 132, 252, 0.14) 50%, transparent 65%);
+            background-size: 200% 200%;
+            animation: foilShimmer 4.5s infinite linear;
+            pointer-events: none;
+            border-radius: inherit;
+        }
+        @keyframes foilShimmer {
+            0% { background-position: 200% 0%; }
+            100% { background-position: -200% 0%; }
+        }
+
+        /* 3D Card Flip Mechanics */
+        .flip-perspective {
+            perspective: 1200px;
+        }
+        .flip-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+            transform-style: preserve-3d;
+        }
+        .flip-inner.is-flipped {
+            transform: rotateY(180deg);
+        }
+        .flip-face {
+            position: absolute;
+            inset: 0;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+        }
+        .flip-front {
+            transform: rotateY(180deg);
+        }
+
+        /* Pack Hover Float */
+        .pack-card {
+            transition: transform 0.25s ease, box-shadow 0.25s ease;
+        }
+        .pack-card:hover {
+            transform: translateY(-6px);
+        }
+
+        /* Subtle Transit Grid Background */
+        .transit-grid-bg {
+            background-image: radial-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col transit-grid-bg selection:bg-amber-500 selection:text-slate-950">
+
+    <!-- Top Navigation Bar -->
+    <header class="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/90">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+            <!-- Brand Logo -->
+            <div class="flex items-center gap-3 cursor-pointer" onclick="switchTab('shop')">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center text-slate-950 font-black text-lg shadow-lg shadow-amber-500/20">
+                    <i class="fa-solid fa-compass"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="font-extrabold text-lg sm:text-xl tracking-tight text-white">TransitDeck</h1>
+                        <span class="px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[10px] font-mono-board uppercase font-bold">Custom Edition</span>
+                    </div>
+                    <p class="text-[11px] text-slate-400 hidden sm:block">Past & Present Transport Trading Card Archive</p>
+                </div>
+            </div>
+
+            <!-- Navigation Tabs -->
+            <nav class="flex items-center bg-slate-900/90 p-1 rounded-xl border border-slate-800 order-3 sm:order-2 w-full sm:w-auto justify-between sm:justify-start">
+                <button id="tab-shop" onclick="switchTab('shop')" class="flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all bg-amber-500 text-slate-950 shadow flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-box-open"></i>
+                    <span>Pack Shop</span>
+                </button>
+                <button id="tab-collection" onclick="switchTab('collection')" class="flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all text-slate-400 hover:text-white flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-layer-group"></i>
+                    <span>Binder</span>
+                    <span id="nav-collection-badge" class="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] font-mono-board text-slate-300">0/0</span>
+                </button>
+                <button id="tab-creator" onclick="switchTab('creator')" class="flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all text-slate-400 hover:text-white flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    <span>Card Creator</span>
+                </button>
+            </nav>
+
+            <!-- Coin Wallet & Data Settings -->
+            <div class="flex items-center gap-2 order-2 sm:order-3">
+                <div class="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 border border-amber-500/30 shadow-inner">
+                    <i class="fa-solid fa-coins text-amber-400 text-sm"></i>
+                    <span id="coin-balance" class="font-mono-board font-bold text-sm sm:text-base text-amber-300">500</span>
+                    <span class="text-[11px] text-slate-400 font-semibold hidden md:inline">COINS</span>
+                </div>
+                <button onclick="openDataModal()" title="Backup & Reset Options" class="p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-white transition-colors">
+                    <i class="fa-solid fa-gear"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8">
+
+        <!-- ==================== VIEW 1: PACK SHOP ==================== -->
+        <section id="view-shop" class="space-y-6">
+            <!-- Archive Progress Banner -->
+            <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div class="flex items-center gap-3.5">
+                    <div class="w-11 h-11 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-lg shrink-0">
+                        <i class="fa-solid fa-ticket"></i>
+                    </div>
+                    <div>
+                        <h2 class="font-bold text-white text-sm sm:text-base">Custom Archive Completion</h2>
+                        <p id="shop-progress-text" class="text-xs text-slate-400">No custom cards minted yet — visit Card Creator!</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3 w-full sm:w-64">
+                    <div class="flex-1 h-2.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                        <div id="shop-progress-bar" class="h-full bg-gradient-to-r from-amber-500 to-orange-500 transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                    <span id="shop-progress-pct" class="font-mono-board text-xs font-bold text-amber-400 w-10 text-right">0%</span>
+                </div>
+            </div>
+
+            <!-- Empty Pool Callout Banner (Shown when 0 cards exist) -->
+            <div id="shop-empty-callout" class="bg-gradient-to-r from-amber-500/15 via-slate-900 to-slate-900 border border-amber-500/40 rounded-2xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center text-xl shrink-0 shadow-lg shadow-amber-500/20">
+                        <i class="fa-solid fa-plus"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base sm:text-lg font-extrabold text-white">Your Pack Pool Starts Empty!</h3>
+                        <p class="text-xs sm:text-sm text-slate-300 mt-1 max-w-2xl">
+                            This edition includes <strong>zero pre-made cards</strong>. Head over to the <strong>Card Creator</strong> to upload photos and mint your own Trains, Planes, Ships, Stations, Airports, and Ports from the Past & Present—then come back here to pull them from packs!
+                        </p>
+                    </div>
+                </div>
+                <button onclick="switchTab('creator')" class="px-5 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-sm shadow-lg shadow-amber-500/20 transition-all shrink-0 flex items-center gap-2">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Create First Card
+                </button>
+            </div>
+
+            <!-- Packs Grid -->
+            <div id="packs-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                <!-- Pack cards rendered via JS -->
+            </div>
+        </section>
+
+        <!-- ==================== VIEW 2: COLLECTION BINDER ==================== -->
+        <section id="view-collection" class="hidden space-y-6">
+            <!-- Top Filter & Duplicate Selling Bar -->
+            <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <h2 class="text-lg sm:text-xl font-extrabold text-white">Transport Collection Binder</h2>
+                        <p id="binder-summary-text" class="text-xs text-slate-400 mt-0.5">0 unique cards owned • 0 total copies</p>
+                    </div>
+
+                    <!-- Sell All Duplicates Action -->
+                    <div class="flex flex-wrap items-center gap-2.5">
+                        <button id="sell-all-dupes-btn" onclick="sellAllDuplicates()" disabled class="px-4 py-2.5 rounded-xl bg-emerald-600/20 border border-emerald-500/30 text-emerald-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-emerald-600/30 font-bold text-xs sm:text-sm transition-all flex items-center gap-2">
+                            <i class="fa-solid fa-coins text-amber-400"></i>
+                            <span id="sell-all-dupes-label">Sell All Duplicates (+0 Coins)</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Filters Row -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-2 border-t border-slate-800/80">
+                    <!-- Search -->
+                    <div class="relative">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
+                        <input type="text" id="filter-search" oninput="renderCollection()" placeholder="Search card name..." class="w-full pl-8 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500">
+                    </div>
+
+                    <!-- Category Filter -->
+                    <select id="filter-category" onchange="renderCollection()" class="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-amber-500">
+                        <option value="ALL">All Categories</option>
+                        <option value="Train">Trains</option>
+                        <option value="Plane">Planes</option>
+                        <option value="Ship">Ships</option>
+                        <option value="Station">Stations</option>
+                        <option value="Airport">Airports</option>
+                        <option value="Port">Ports</option>
+                    </select>
+
+                    <!-- Era Filter -->
+                    <select id="filter-era" onchange="renderCollection()" class="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-amber-500">
+                        <option value="ALL">All Eras (Past & Present)</option>
+                        <option value="Past">Past Era</option>
+                        <option value="Present">Present Era</option>
+                    </select>
+
+                    <!-- Rarity Filter -->
+                    <select id="filter-rarity" onchange="renderCollection()" class="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-amber-500">
+                        <option value="ALL">All Rarities</option>
+                        <option value="Common">Common</option>
+                        <option value="Uncommon">Uncommon</option>
+                        <option value="Rare">Rare</option>
+                        <option value="Epic">Epic</option>
+                        <option value="Legendary">Legendary</option>
+                    </select>
+
+                    <!-- Ownership Filter -->
+                    <select id="filter-ownership" onchange="renderCollection()" class="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-amber-500">
+                        <option value="ALL">Show: All Cards</option>
+                        <option value="OWNED">Owned Only</option>
+                        <option value="UNOWNED">Unowned Only</option>
+                        <option value="DUPES">Has Duplicates</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Cards Grid -->
+            <div id="collection-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+                <!-- Cards rendered via JS -->
+            </div>
+        </section>
+
+        <!-- ==================== VIEW 3: CUSTOM CARD CREATOR ==================== -->
+        <section id="view-creator" class="hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+                <!-- Form Column -->
+                <div class="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-5">
+                    <div>
+                        <h2 class="text-lg sm:text-xl font-extrabold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i>
+                            <span>Custom Card Workshop</span>
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-1">Upload a photo, name your transport or hub, pick its era & rarity, and mint it into the pack pool.</p>
+                    </div>
+
+                    <form id="custom-card-form" onsubmit="handleCreateCard(event)" class="space-y-4">
+                        <!-- Card Name -->
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">Card Name *</label>
+                            <input type="text" id="custom-name" required maxlength="36" oninput="updateCreatorPreview()" placeholder="e.g., Flying Scotsman, Concorde, Port of Rotterdam..." class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500">
+                        </div>
+
+                        <!-- Subtitle / Year / Location -->
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">Subtitle / Year / Location (Optional)</label>
+                            <input type="text" id="custom-subtitle" maxlength="44" oninput="updateCreatorPreview()" placeholder="e.g., Est. 1923 • London to Edinburgh" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500">
+                        </div>
+
+                        <!-- Category & Era -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">Category *</label>
+                                <select id="custom-category" onchange="updateCreatorPreview()" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-sm text-white focus:outline-none focus:border-amber-500">
+                                    <option value="Train">Train</option>
+                                    <option value="Plane">Plane</option>
+                                    <option value="Ship">Ship</option>
+                                    <option value="Station">Station</option>
+                                    <option value="Airport">Airport</option>
+                                    <option value="Port">Port</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">Era *</label>
+                                <select id="custom-era" onchange="updateCreatorPreview()" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-sm text-white focus:outline-none focus:border-amber-500">
+                                    <option value="Present">Present</option>
+                                    <option value="Past">Past</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Rarity Selection -->
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">Rarity Tier *</label>
+                            <div class="grid grid-cols-2 sm:grid-cols-5 gap-2" id="rarity-selector-group">
+                                <button type="button" onclick="selectCreatorRarity('Common')" data-rarity="Common" class="rarity-opt-btn py-2 px-2 rounded-xl border border-slate-500 bg-slate-800 text-slate-200 text-xs font-bold text-center transition-all ring-2 ring-amber-400">Common</button>
+                                <button type="button" onclick="selectCreatorRarity('Uncommon')" data-rarity="Uncommon" class="rarity-opt-btn py-2 px-2 rounded-xl border border-emerald-500/40 bg-slate-950 text-emerald-400 text-xs font-bold text-center transition-all">Uncommon</button>
+                                <button type="button" onclick="selectCreatorRarity('Rare')" data-rarity="Rare" class="rarity-opt-btn py-2 px-2 rounded-xl border border-blue-500/40 bg-slate-950 text-blue-400 text-xs font-bold text-center transition-all">Rare</button>
+                                <button type="button" onclick="selectCreatorRarity('Epic')" data-rarity="Epic" class="rarity-opt-btn py-2 px-2 rounded-xl border border-purple-500/40 bg-slate-950 text-purple-400 text-xs font-bold text-center transition-all">Epic</button>
+                                <button type="button" onclick="selectCreatorRarity('Legendary')" data-rarity="Legendary" class="rarity-opt-btn py-2 px-2 rounded-xl border border-amber-500/40 bg-slate-950 text-amber-400 text-xs font-bold text-center transition-all col-span-2 sm:col-span-1">Legendary</button>
+                            </div>
+                            <input type="hidden" id="custom-rarity" value="Common">
+                        </div>
+
+                        <!-- Photo Upload -->
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">Card Photo *</label>
+                            <div class="flex flex-col sm:flex-row gap-3">
+                                <label class="flex-1 cursor-pointer flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-slate-950 hover:bg-slate-800/80 border border-dashed border-slate-700 hover:border-amber-500 text-xs sm:text-sm text-slate-300 transition-colors">
+                                    <i class="fa-solid fa-cloud-arrow-up text-amber-400"></i>
+                                    <span id="photo-upload-label">Upload Photo from Device</span>
+                                    <input type="file" id="custom-photo-file" accept="image/*" onchange="handlePhotoUpload(event)" class="hidden">
+                                </label>
+                                <button type="button" id="clear-photo-btn" onclick="clearUploadedPhoto()" class="hidden px-3.5 py-2.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/70 border border-rose-500/40 text-rose-300 text-xs font-bold">
+                                    Remove Photo
+                                </button>
+                            </div>
+                            <p class="text-[11px] text-slate-500 mt-1">Automatically compressed for browser storage. If no photo is uploaded, a sleek category emblem is used.</p>
+                        </div>
+
+                        <!-- Starter Copy Checkbox -->
+                        <div class="flex items-start gap-2.5 pt-1">
+                            <input type="checkbox" id="custom-grant-copy" class="w-4 h-4 mt-0.5 rounded accent-amber-500">
+                            <label for="custom-grant-copy" class="text-xs sm:text-sm text-slate-300">Also add 1 starter copy directly to my binder <span class="text-slate-500">(leave unchecked to pull it from packs)</span></label>
+                        </div>
+
+                        <button type="submit" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 font-extrabold text-sm sm:text-base shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-plus-circle"></i> Mint Card to Pack Pool
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Live Preview & Card Pool Manager Column -->
+                <div class="lg:col-span-5 space-y-6">
+                    <!-- Live Preview Card -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col items-center">
+                        <span class="text-xs font-mono-board uppercase tracking-widest text-amber-400 mb-4">Live Card Preview</span>
+                        <div id="creator-preview-container" class="w-full max-w-[290px]">
+                            <!-- Live Preview Injected Here -->
+                        </div>
+                    </div>
+
+                    <!-- Manage Active Card Pool -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                        <div class="flex items-center justify-between gap-2 mb-3">
+                            <h3 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                                <span>Active Pack Pool</span>
+                                <span id="pool-count-badge" class="px-2 py-0.5 rounded bg-slate-800 text-amber-400 font-mono-board text-xs">0</span>
+                            </h3>
+                        </div>
+
+                        <!-- Pool Search -->
+                        <div class="flex gap-2 mb-3">
+                            <input type="text" id="pool-search-input" oninput="renderCardPoolManager()" placeholder="Search created cards..." class="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500">
+                        </div>
+
+                        <div id="card-pool-list" class="space-y-2 max-h-64 overflow-y-auto pr-1">
+                            <!-- Card pool entries rendered dynamically -->
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <!-- ==================== PACK OPENING STAGE MODAL ==================== -->
+    <div id="pack-modal" class="hidden fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-lg flex flex-col items-center justify-between p-4 sm:p-8 overflow-y-auto">
+        <div class="w-full max-w-6xl flex items-center justify-between">
+            <div>
+                <span id="pack-modal-badge" class="px-2.5 py-0.5 rounded-full text-[10px] font-mono-board font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40">PACK OPENING</span>
+                <h2 id="pack-modal-title" class="text-xl sm:text-2xl font-extrabold text-white mt-1">Commuter Free Pack</h2>
+            </div>
+            <button id="pack-close-x" onclick="closePackModal()" class="p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition-colors">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <!-- Revealed Cards Row -->
+        <div id="pack-reveal-grid" class="my-6 w-full max-w-6xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 place-items-center">
+            <!-- Flip cards injected dynamically -->
+        </div>
+
+        <!-- Bottom Pack Controls -->
+        <div class="w-full max-w-xl flex flex-col sm:flex-row items-center justify-center gap-3 pb-2">
+            <button id="reveal-all-btn" onclick="revealAllPackCards()" class="w-full sm:w-auto px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-sm shadow-lg shadow-amber-500/25 transition-all flex items-center justify-center gap-2">
+                <i class="fa-solid fa-eye"></i> Reveal All Cards
+            </button>
+            <button id="open-another-btn" onclick="reopenSamePack()" class="hidden w-full sm:w-auto px-6 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-sm shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2">
+                <i class="fa-solid fa-rotate-right"></i> Open Another
+            </button>
+            <button id="done-pack-btn" onclick="closePackModal()" class="hidden w-full sm:w-auto px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm border border-slate-700 transition-all">
+                Done
+            </button>
+        </div>
+    </div>
+
+    <!-- ==================== CARD INSPECT MODAL ==================== -->
+    <div id="inspect-modal" class="hidden fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4" onclick="if(event.target === this) closeInspectModal()">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-5 sm:p-6 space-y-5 shadow-2xl">
+            <div class="flex items-center justify-between">
+                <span class="px-2.5 py-0.5 rounded-md text-[10px] font-mono-board uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40">CUSTOM TRANSPORT CARD</span>
+                <button onclick="closeInspectModal()" class="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div id="inspect-card-preview" class="max-w-[290px] mx-auto">
+                <!-- Inspected Card Rendered Here -->
+            </div>
+
+            <div id="inspect-actions" class="flex flex-col sm:flex-row gap-2.5 pt-2 border-t border-slate-800">
+                <button id="inspect-sell-btn" onclick="sellInspectedDuplicate()" class="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs sm:text-sm transition-colors flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-coins text-amber-300"></i>
+                    <span id="inspect-sell-label">Sell Duplicate</span>
+                </button>
+                <button onclick="requestDeleteCardFromInspect()" class="py-2.5 px-4 rounded-xl bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 font-bold text-xs sm:text-sm transition-colors flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-trash-can"></i> Delete Card
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== DELETE CARD CONFIRMATION MODAL ==================== -->
+    <div id="delete-card-modal" class="hidden fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-2xl">
+            <div class="w-12 h-12 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 text-xl">
+                <i class="fa-solid fa-trash-can"></i>
+            </div>
+            <div>
+                <h3 class="text-lg font-extrabold text-white">Delete Card?</h3>
+                <p id="delete-card-message" class="text-xs sm:text-sm text-slate-400 mt-1">This card will be permanently removed from packs and your binder.</p>
+            </div>
+            <div class="flex gap-2.5 pt-2">
+                <button onclick="closeDeleteCardModal()" class="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs sm:text-sm">Cancel</button>
+                <button onclick="confirmDeleteCard()" class="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs sm:text-sm">Delete Permanently</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== DATA BACKUP & RESET MODAL ==================== -->
+    <div id="data-modal" class="hidden fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4" onclick="if(event.target === this) closeDataModal()">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl">
+            <div class="flex items-center justify-between">
+                <h3 class="text-lg font-extrabold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-database text-amber-400"></i>
+                    <span>Save Data & Deck Backup</span>
+                </h3>
+                <button onclick="closeDataModal()" class="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <p class="text-xs text-slate-400 leading-relaxed">
+                Your custom cards, coins, and unlocked collection are saved automatically in this browser. Export a backup file anytime to move or protect your created cards.
+            </p>
+
+            <!-- Export / Import Buttons -->
+            <div class="grid grid-cols-2 gap-3">
+                <button onclick="exportDeckBackup()" class="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-bold text-xs flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-download text-amber-400"></i> Export Backup
+                </button>
+                <label class="cursor-pointer py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-bold text-xs flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-upload text-emerald-400"></i> Import Backup
+                    <input type="file" accept=".json" onchange="importDeckBackup(event)" class="hidden">
+                </label>
+            </div>
+
+            <!-- Reset Options -->
+            <div class="pt-3 border-t border-slate-800 space-y-2.5">
+                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Reset Controls</p>
+                <button onclick="resetCollectionOnly()" class="w-full py-2.5 px-4 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 font-bold text-xs text-left flex items-center justify-between">
+                    <span>Reset Coins & Binder Progress (Keep Created Cards)</span>
+                    <i class="fa-solid fa-rotate-left"></i>
+                </button>
+                <button onclick="factoryResetAll()" class="w-full py-2.5 px-4 rounded-xl bg-rose-950/60 hover:bg-rose-900/70 border border-rose-500/40 text-rose-300 font-bold text-xs text-left flex items-center justify-between">
+                    <span>Full Wipe (Delete All Cards, Coins & Progress)</span>
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0"></div>
+
+    <script>
+        // ==================== CONFIGURATION & CONSTANTS ====================
+        const STORAGE_KEY = 'transitdeck_zero_premade_v1';
+
+        // Zero pre-made cards by design
+        const BUILTIN_CARDS = [];
+
+        const RARITY_CONFIG = {
+            Common: {
+                sellValue: 15,
+                badgeBg: 'bg-slate-700 text-slate-200 border-slate-500',
+                text: 'text-slate-300',
+                stars: '★'
+            },
+            Uncommon: {
+                sellValue: 35,
+                badgeBg: 'bg-emerald-950 text-emerald-300 border-emerald-500/60',
+                text: 'text-emerald-400',
+                stars: '★★'
+            },
+            Rare: {
+                sellValue: 80,
+                badgeBg: 'bg-blue-950 text-blue-300 border-blue-500/60',
+                text: 'text-blue-400',
+                stars: '★★★'
+            },
+            Epic: {
+                sellValue: 200,
+                badgeBg: 'bg-purple-950 text-purple-300 border-purple-500/60',
+                text: 'text-purple-400',
+                stars: '★★★★'
+            },
+            Legendary: {
+                sellValue: 500,
+                badgeBg: 'bg-amber-950 text-amber-300 border-amber-500/70',
+                text: 'text-amber-400',
+                stars: '★★★★★'
+            }
+        };
+
+        const CATEGORY_ICONS = {
+            Train: 'fa-train',
+            Plane: 'fa-plane-up',
+            Ship: 'fa-ship',
+            Station: 'fa-building-columns',
+            Airport: 'fa-tower-observation',
+            Port: 'fa-anchor'
+        };
+
+        const PACKS = [
+            {
+                id: 'commuter-free',
+                name: 'Commuter Free Pack',
+                subtitle: 'Unlimited standard pulls from your custom pool',
+                cost: 0,
+                cardsCount: 3,
+                badge: 'UNLIMITED FREE',
+                badgeColor: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40',
+                gradient: 'from-slate-900 via-slate-900 to-emerald-950/40 border-emerald-500/30',
+                icon: 'fa-ticket',
+                eraFilter: null,
+                odds: { Common: 55, Uncommon: 28, Rare: 12, Epic: 4, Legendary: 1 }
+            },
+            {
+                id: 'express-transit',
+                name: 'Express Transit Pack',
+                subtitle: 'Higher Rare & Epic odds across all eras',
+                cost: 100,
+                cardsCount: 4,
+                badge: 'BOOSTED ODDS',
+                badgeColor: 'bg-blue-500/20 text-blue-300 border border-blue-500/40',
+                gradient: 'from-slate-900 via-slate-900 to-blue-950/40 border-blue-500/30',
+                icon: 'fa-bolt',
+                eraFilter: null,
+                odds: { Common: 25, Uncommon: 35, Rare: 25, Epic: 11, Legendary: 4 }
+            },
+            {
+                id: 'heritage-archive',
+                name: 'Heritage Archive Pack',
+                subtitle: 'Strictly Past Era vehicles & historic hubs',
+                cost: 150,
+                cardsCount: 4,
+                badge: 'PAST ERA ONLY',
+                badgeColor: 'bg-purple-500/20 text-purple-300 border border-purple-500/40',
+                gradient: 'from-slate-900 via-slate-900 to-purple-950/40 border-purple-500/30',
+                icon: 'fa-landmark',
+                eraFilter: 'Past',
+                odds: { Common: 20, Uncommon: 30, Rare: 30, Epic: 14, Legendary: 6 }
+            },
+            {
+                id: 'first-class-vault',
+                name: 'First-Class Vault',
+                subtitle: 'Zero Commons + guaranteed Epic or Legendary!',
+                cost: 300,
+                cardsCount: 5,
+                badge: 'PREMIUM VAULT',
+                badgeColor: 'bg-amber-500/20 text-amber-300 border border-amber-500/40',
+                gradient: 'from-slate-900 via-slate-900 to-amber-950/40 border-amber-500/40',
+                icon: 'fa-crown',
+                eraFilter: null,
+                guaranteedEpicPlus: true,
+                odds: { Common: 0, Uncommon: 30, Rare: 40, Epic: 20, Legendary: 10 }
+            }
+        ];
+
+        // ==================== STATE MANAGEMENT ====================
+        let gameState = {
+            coins: 500,
+            inventory: {},    // { cardId: count }
+            customCards: []   // Array of user-created card objects
+        };
+
+        let uploadedPhotoDataUrl = null;
+        let activePackId = null;
+        let currentPackPulls = [];
+        let inspectedCardId = null;
+        let pendingDeleteCardId = null;
+
+        function loadGameState() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    gameState.coins = typeof parsed.coins === 'number' ? parsed.coins : 500;
+                    gameState.inventory = parsed.inventory && typeof parsed.inventory === 'object' ? parsed.inventory : {};
+                    gameState.customCards = Array.isArray(parsed.customCards) ? parsed.customCards : [];
+                }
+            } catch (err) {
+                console.error('Error loading save state:', err);
+            }
+        }
+
+        function saveGameState() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
+            } catch (err) {
+                showToast('Browser storage is full! Try using smaller photos or exporting a backup.', 'error');
+            }
+            updateHeaderStats();
+        }
+
+        function getAllCards() {
+            return [...BUILTIN_CARDS, ...gameState.customCards];
+        }
+
+        // ==================== NAVIGATION & HEADER ====================
+        function switchTab(tabName) {
+            ['shop', 'collection', 'creator'].forEach(t => {
+                document.getElementById(`view-${t}`).classList.add('hidden');
+                const btn = document.getElementById(`tab-${t}`);
+                btn.classList.remove('bg-amber-500', 'text-slate-950', 'shadow');
+                btn.classList.add('text-slate-400');
+            });
+
+            document.getElementById(`view-${tabName}`).classList.remove('hidden');
+            const activeBtn = document.getElementById(`tab-${tabName}`);
+            activeBtn.classList.add('bg-amber-500', 'text-slate-950', 'shadow');
+            activeBtn.classList.remove('text-slate-400');
+
+            if (tabName === 'shop') {
+                renderPacks();
+            } else if (tabName === 'collection') {
+                renderCollection();
+            } else if (tabName === 'creator') {
+                updateCreatorPreview();
+                renderCardPoolManager();
+            }
+        }
+
+        function updateHeaderStats() {
+            document.getElementById('coin-balance').textContent = gameState.coins.toLocaleString();
+
+            const allCards = getAllCards();
+            const totalCards = allCards.length;
+            const uniqueOwned = allCards.filter(c => (gameState.inventory[c.id] || 0) > 0).length;
+            const pct = totalCards > 0 ? Math.round((uniqueOwned / totalCards) * 100) : 0;
+
+            document.getElementById('nav-collection-badge').textContent = `${uniqueOwned}/${totalCards}`;
+            document.getElementById('shop-progress-text').textContent = totalCards === 0
+                ? 'No custom cards minted yet — visit Card Creator!'
+                : `${uniqueOwned} of ${totalCards} Custom Cards Discovered`;
+            document.getElementById('shop-progress-pct').textContent = `${pct}%`;
+            document.getElementById('shop-progress-bar').style.width = `${pct}%`;
+
+            const emptyCallout = document.getElementById('shop-empty-callout');
+            if (emptyCallout) {
+                if (totalCards === 0) emptyCallout.classList.remove('hidden');
+                else emptyCallout.classList.add('hidden');
+            }
+        }
+
+        // ==================== CARD RENDERING HELPER ====================
+        function renderCardHTML(card, options = {}) {
+            const {
+                count = 0,
+                unowned = false,
+                showSellBtn = false,
+                interactive = true,
+                isNewBadge = false
+            } = options;
+
+            const rConf = RARITY_CONFIG[card.rarity] || RARITY_CONFIG.Common;
+            const catIcon = CATEGORY_ICONS[card.category] || 'fa-compass';
+            const dupeCount = Math.max(0, count - 1);
+            const foilClass = (card.rarity === 'Legendary' || card.rarity === 'Epic') && !unowned ? `foil-${card.rarity}` : '';
+
+            const mediaHTML = card.image
+                ? `<img src="${card.image}" alt="${escapeHTML(card.name)}" class="w-full h-full object-cover ${unowned ? 'grayscale opacity-35' : ''}">`
+                : `<div class="w-full h-full bg-gradient-to-br from-slate-800 to-slate-950 flex flex-col items-center justify-center ${unowned ? 'opacity-35' : ''}">
+                        <i class="fa-solid ${catIcon} text-4xl ${rConf.text} mb-2"></i>
+                        <span class="text-[10px] font-mono-board uppercase tracking-widest text-slate-500">${escapeHTML(card.category)}</span>
+                   </div>`;
+
+            return `
+            <div ${interactive ? `onclick="openInspectModal('${card.id}')"` : ''}
+                 class="relative rounded-2xl bg-slate-900 border-2 ${unowned ? 'border-slate-800' : `rarity-${card.rarity}`} ${foilClass} overflow-hidden flex flex-col justify-between transition-all duration-200 ${interactive ? 'cursor-pointer hover:-translate-y-1.5' : ''} select-none">
+
+                <!-- Top Card Header -->
+                <div class="px-3 py-2 bg-slate-950/90 border-b border-slate-800/80 flex items-center justify-between gap-2">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-mono-board font-bold border ${rConf.badgeBg}">
+                        ${card.rarity.toUpperCase()}
+                    </span>
+                    <div class="flex items-center gap-1.5">
+                        ${isNewBadge ? `<span class="px-2 py-0.5 rounded bg-amber-400 text-slate-950 font-black text-[10px] animate-pulse">NEW!</span>` : ''}
+                        <span class="px-2 py-0.5 rounded text-[10px] font-mono-board font-semibold ${card.era === 'Past' ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30' : 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'}">
+                            ${card.era.toUpperCase()}
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Artwork Frame -->
+                <div class="relative aspect-[16/10] w-full bg-slate-950 overflow-hidden">
+                    ${mediaHTML}
+                    ${unowned ? `
+                        <div class="absolute inset-0 flex items-center justify-center bg-slate-950/50">
+                            <span class="px-3 py-1 rounded-full bg-slate-900/90 border border-slate-700 text-[11px] font-mono-board text-slate-400">
+                                <i class="fa-solid fa-lock mr-1"></i> UNDISCOVERED
+                            </span>
+                        </div>
+                    ` : ''}
+                    ${count > 0 ? `
+                        <div class="absolute bottom-2 right-2 px-2.5 py-0.5 rounded-lg bg-slate-950/90 border border-slate-700 text-xs font-mono-board font-bold text-white shadow">
+                            x${count}
+                        </div>
+                    ` : ''}
+                </div>
+
+                <!-- Card Body Details -->
+                <div class="p-3.5 flex-1 flex flex-col justify-between bg-gradient-to-b from-slate-900 to-slate-950">
+                    <div>
+                        <div class="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                            <span class="flex items-center gap-1.5 font-semibold">
+                                <i class="fa-solid ${catIcon} ${rConf.text}"></i>
+                                ${escapeHTML(card.category)}
+                            </span>
+                            <span class="${rConf.text} tracking-tighter text-xs">${rConf.stars}</span>
+                        </div>
+                        <h3 class="font-extrabold text-sm sm:text-base text-white leading-snug line-clamp-1">${escapeHTML(card.name)}</h3>
+                        <p class="text-[11px] text-slate-400 mt-0.5 line-clamp-1 min-h-[16px]">${card.subtitle ? escapeHTML(card.subtitle) : 'Custom Transit Entry'}</p>
+                    </div>
+
+                    ${showSellBtn ? `
+                        <div class="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between gap-2" onclick="event.stopPropagation()">
+                            <span class="text-[11px] text-slate-400">
+                                Dupes: <strong class="text-white font-mono-board">${dupeCount}</strong>
+                            </span>
+                            <button onclick="sellSingleDuplicate('${card.id}')" ${dupeCount <= 0 ? 'disabled' : ''}
+                                class="px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors flex items-center gap-1 ${
+                                    dupeCount > 0
+                                    ? 'bg-emerald-600/25 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/40'
+                                    : 'bg-slate-800/50 text-slate-600 cursor-not-allowed'
+                                }">
+                                <i class="fa-solid fa-coins text-amber-400"></i>
+                                Sell +${rConf.sellValue}
+                            </button>
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+            `;
+        }
+
+        // ==================== PACK SHOP & OPENING LOGIC ====================
+        function renderPacks() {
+            const grid = document.getElementById('packs-grid');
+            const allCards = getAllCards();
+            const pastCardsCount = allCards.filter(c => c.era === 'Past').length;
+
+            grid.innerHTML = PACKS.map(pack => {
+                const isFree = pack.cost === 0;
+                const needsAnyCards = allCards.length === 0;
+                const needsPastCards = !needsAnyCards && pack.eraFilter === 'Past' && pastCardsCount === 0;
+                const isDisabled = needsAnyCards || needsPastCards;
+
+                let actionBtn = '';
+                if (needsAnyCards) {
+                    actionBtn = `
+                        <button onclick="switchTab('creator')" class="w-full py-3 rounded-xl font-extrabold text-xs sm:text-sm bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/40 transition-all flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i> Create Cards First
+                        </button>
+                    `;
+                } else if (needsPastCards) {
+                    actionBtn = `
+                        <button onclick="switchTab('creator')" class="w-full py-3 rounded-xl font-extrabold text-xs sm:text-sm bg-slate-800 hover:bg-slate-700 text-purple-300 border border-purple-500/40 transition-all flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-landmark"></i> Add Past Era Cards
+                        </button>
+                    `;
+                } else {
+                    actionBtn = `
+                        <button onclick="openPack('${pack.id}')" class="w-full py-3 rounded-xl font-extrabold text-sm transition-all flex items-center justify-center gap-2 shadow-lg ${
+                            isFree
+                            ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/20'
+                            : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20'
+                        }">
+                            ${isFree
+                                ? '<i class="fa-solid fa-box-open"></i> Open Free Pack'
+                                : `<i class="fa-solid fa-coins"></i> Buy & Open (${pack.cost})`
+                            }
+                        </button>
+                    `;
+                }
+
+                return `
+                <div class="pack-card rounded-2xl bg-gradient-to-b ${pack.gradient} border p-5 flex flex-col justify-between shadow-xl relative overflow-hidden ${isDisabled ? 'opacity-90' : ''}">
+                    <div>
+                        <div class="flex items-center justify-between mb-4">
+                            <span class="px-2.5 py-0.5 rounded-full text-[10px] font-mono-board font-bold ${pack.badgeColor}">
+                                ${pack.badge}
+                            </span>
+                            <span class="text-xs font-mono-board text-slate-400">${pack.cardsCount} Cards</span>
+                        </div>
+
+                        <div class="my-3 h-36 rounded-xl bg-slate-950/75 border border-white/10 flex flex-col items-center justify-center p-4 text-center">
+                            <div class="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-2xl text-amber-400 mb-2 shadow-inner">
+                                <i class="fa-solid ${pack.icon}"></i>
+                            </div>
+                            <h3 class="font-extrabold text-white text-base leading-tight">${pack.name}</h3>
+                            <p class="text-[11px] text-slate-400 mt-1">${pack.subtitle}</p>
+                        </div>
+
+                        <div class="space-y-1 text-[11px] text-slate-300 bg-slate-950/50 rounded-xl p-3 border border-slate-800/80 mb-4">
+                            <div class="flex justify-between text-slate-400 font-semibold border-b border-slate-800 pb-1 mb-1">
+                                <span>Drop Rates</span>
+                                <span>Per Card</span>
+                            </div>
+                            ${pack.odds.Common > 0 ? `<div class="flex justify-between"><span>Common</span><span class="font-mono-board">${pack.odds.Common}%</span></div>` : ''}
+                            <div class="flex justify-between text-emerald-400"><span>Uncommon</span><span class="font-mono-board">${pack.odds.Uncommon}%</span></div>
+                            <div class="flex justify-between text-blue-400"><span>Rare</span><span class="font-mono-board">${pack.odds.Rare}%</span></div>
+                            <div class="flex justify-between text-purple-400"><span>Epic</span><span class="font-mono-board">${pack.odds.Epic}%</span></div>
+                            <div class="flex justify-between text-amber-400 font-bold"><span>Legendary</span><span class="font-mono-board">${pack.odds.Legendary}%</span></div>
+                        </div>
+                    </div>
+
+                    ${actionBtn}
+                </div>
+                `;
+            }).join('');
+        }
+
+        function rollRarityFromOdds(odds) {
+            const roll = Math.random() * 100;
+            let cumulative = 0;
+            for (const rarity of ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary']) {
+                cumulative += odds[rarity] || 0;
+                if (roll <= cumulative) return rarity;
+            }
+            return 'Common';
+        }
+
+        function pickCardFromPool(pool, targetRarity) {
+            // Find cards matching target rarity; if none exist in user's custom pool, fallback gracefully to nearest available rarity
+            const exact = pool.filter(c => c.rarity === targetRarity);
+            if (exact.length > 0) {
+                return exact[Math.floor(Math.random() * exact.length)];
+            }
+            return pool[Math.floor(Math.random() * pool.length)];
+        }
+
+        function openPack(packId) {
+            const pack = PACKS.find(p => p.id === packId);
+            if (!pack) return;
+
+            const allCards = getAllCards();
+            if (allCards.length === 0) {
+                showToast('Your card pool is empty! Mint custom cards in the Card Creator first.', 'error');
+                return;
+            }
+
+            let pool = pack.eraFilter ? allCards.filter(c => c.era === pack.eraFilter) : allCards;
+            if (pool.length === 0) {
+                showToast(`No ${pack.eraFilter} Era cards in your pool yet! Create one first.`, 'error');
+                return;
+            }
+
+            if (gameState.coins < pack.cost) {
+                showToast(`Not enough Coins! Need ${pack.cost} Coins. Sell duplicates in your binder!`, 'error');
+                return;
+            }
+
+            // Deduct cost
+            gameState.coins -= pack.cost;
+            activePackId = packId;
+
+            // Generate pulls
+            const pulls = [];
+            for (let i = 0; i < pack.cardsCount; i++) {
+                let targetRarity = rollRarityFromOdds(pack.odds);
+                if (pack.guaranteedEpicPlus && i === pack.cardsCount - 1) {
+                    targetRarity = Math.random() < 0.35 ? 'Legendary' : 'Epic';
+                }
+                const card = pickCardFromPool(pool, targetRarity);
+                const prevOwned = gameState.inventory[card.id] || 0;
+                gameState.inventory[card.id] = prevOwned + 1;
+
+                pulls.push({
+                    card,
+                    isNew: prevOwned === 0,
+                    newCount: prevOwned + 1,
+                    revealed: false
+                });
+            }
+
+            saveGameState();
+            currentPackPulls = pulls;
+            showPackModal(pack);
+        }
+
+        function showPackModal(pack) {
+            document.getElementById('pack-modal-badge').textContent = pack.badge;
+            document.getElementById('pack-modal-title').textContent = pack.name;
+
+            document.getElementById('reveal-all-btn').classList.remove('hidden');
+            document.getElementById('open-another-btn').classList.add('hidden');
+            document.getElementById('done-pack-btn').classList.add('hidden');
+
+            const grid = document.getElementById('pack-reveal-grid');
+            grid.className = `my-6 w-full max-w-6xl grid grid-cols-1 sm:grid-cols-2 ${currentPackPulls.length >= 5 ? 'lg:grid-cols-5' : currentPackPulls.length === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-5 place-items-center`;
+
+            grid.innerHTML = currentPackPulls.map((pull, idx) => {
+                const rClass = `rarity-${pull.card.rarity}`;
+                return `
+                <div class="w-full max-w-[260px] h-[350px] flip-perspective cursor-pointer" onclick="flipPackCard(${idx})">
+                    <div id="pack-flip-inner-${idx}" class="flip-inner">
+                        <!-- Card Back -->
+                        <div class="flip-face rounded-2xl bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 border-2 ${rClass} flex flex-col items-center justify-center p-6 text-center shadow-2xl">
+                            <div class="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-3xl mb-3">
+                                <i class="fa-solid fa-compass"></i>
+                            </div>
+                            <span class="font-extrabold text-white tracking-wider text-sm">TRANSITDECK</span>
+                            <span class="text-[11px] font-mono-board text-slate-400 mt-1">TAP TO REVEAL</span>
+                        </div>
+
+                        <!-- Card Front -->
+                        <div class="flip-face flip-front">
+                            ${renderCardHTML(pull.card, {
+                                count: pull.newCount,
+                                interactive: false,
+                                isNewBadge: pull.isNew
+                            })}
+                        </div>
+                    </div>
+                </div>
+                `;
+            }).join('');
+
+            document.getElementById('pack-modal').classList.remove('hidden');
+        }
+
+        function flipPackCard(index) {
+            if (!currentPackPulls[index] || currentPackPulls[index].revealed) return;
+            currentPackPulls[index].revealed = true;
+            const el = document.getElementById(`pack-flip-inner-${index}`);
+            if (el) el.classList.add('is-flipped');
+
+            if (currentPackPulls.every(p => p.revealed)) {
+                onAllPackCardsRevealed();
+            }
+        }
+
+        function revealAllPackCards() {
+            currentPackPulls.forEach((_, idx) => {
+                setTimeout(() => flipPackCard(idx), idx * 110);
+            });
+        }
+
+        function onAllPackCardsRevealed() {
+            document.getElementById('reveal-all-btn').classList.add('hidden');
+            document.getElementById('done-pack-btn').classList.remove('hidden');
+
+            const pack = PACKS.find(p => p.id === activePackId);
+            const reopenBtn = document.getElementById('open-another-btn');
+            if (pack) {
+                reopenBtn.classList.remove('hidden');
+                reopenBtn.innerHTML = pack.cost === 0
+                    ? `<i class="fa-solid fa-rotate-right"></i> Open Another Free Pack`
+                    : `<i class="fa-solid fa-coins"></i> Open Another (${pack.cost} Coins)`;
+            }
+        }
+
+        function reopenSamePack() {
+            if (!activePackId) return;
+            openPack(activePackId);
+        }
+
+        function closePackModal() {
+            document.getElementById('pack-modal').classList.add('hidden');
+            renderPacks();
+            if (!document.getElementById('view-collection').classList.contains('hidden')) {
+                renderCollection();
+            }
+        }
+
+        // ==================== COLLECTION BINDER & DUPLICATE SELLING ====================
+        function getTotalDuplicateSellValue() {
+            let totalCoins = 0;
+            let totalDupes = 0;
+            for (const card of getAllCards()) {
+                const count = gameState.inventory[card.id] || 0;
+                if (count > 1) {
+                    const dupes = count - 1;
+                    const val = RARITY_CONFIG[card.rarity]?.sellValue || 15;
+                    totalDupes += dupes;
+                    totalCoins += dupes * val;
+                }
+            }
+            return { totalCoins, totalDupes };
+        }
+
+        function renderCollection() {
+            const allCards = getAllCards();
+            const grid = document.getElementById('collection-grid');
+
+            // Update Binder Summary & Sell All Duplicates Button
+            const uniqueOwned = allCards.filter(c => (gameState.inventory[c.id] || 0) > 0).length;
+            const totalCopies = allCards.reduce((sum, c) => sum + (gameState.inventory[c.id] || 0), 0);
+            document.getElementById('binder-summary-text').textContent =
+                `${uniqueOwned} of ${allCards.length} unique cards unlocked • ${totalCopies} total copies in binder`;
+
+            const { totalCoins, totalDupes } = getTotalDuplicateSellValue();
+            const sellAllBtn = document.getElementById('sell-all-dupes-btn');
+            sellAllBtn.disabled = totalDupes === 0;
+            document.getElementById('sell-all-dupes-label').textContent =
+                `Sell All Duplicates (${totalDupes}) (+${totalCoins.toLocaleString()} Coins)`;
+
+            // Empty pool state
+            if (allCards.length === 0) {
+                grid.innerHTML = `
+                <div class="col-span-full py-16 px-4 text-center bg-slate-900/60 border border-slate-800 rounded-2xl space-y-4">
+                    <div class="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-2xl mx-auto">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-extrabold text-white">No Cards Created Yet</h3>
+                        <p class="text-sm text-slate-400 mt-1 max-w-md mx-auto">
+                            This version starts with zero pre-made cards. Create your own custom Trains, Planes, Ships, Stations, Airports, and Ports to start collecting!
+                        </p>
+                    </div>
+                    <button onclick="switchTab('creator')" class="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-sm shadow-lg shadow-amber-500/20 transition-all">
+                        Open Card Creator
+                    </button>
+                </div>`;
+                return;
+            }
+
+            // Apply Filters
+            const search = document.getElementById('filter-search').value.toLowerCase().trim();
+            const cat = document.getElementById('filter-category').value;
+            const era = document.getElementById('filter-era').value;
+            const rarity = document.getElementById('filter-rarity').value;
+            const ownership = document.getElementById('filter-ownership').value;
+
+            const filtered = allCards.filter(card => {
+                const count = gameState.inventory[card.id] || 0;
+                if (search && !card.name.toLowerCase().includes(search) && !(card.subtitle || '').toLowerCase().includes(search)) return false;
+                if (cat !== 'ALL' && card.category !== cat) return false;
+                if (era !== 'ALL' && card.era !== era) return false;
+                if (rarity !== 'ALL' && card.rarity !== rarity) return false;
+                if (ownership === 'OWNED' && count === 0) return false;
+                if (ownership === 'UNOWNED' && count > 0) return false;
+                if (ownership === 'DUPES' && count <= 1) return false;
+                return true;
+            });
+
+            if (filtered.length === 0) {
+                grid.innerHTML = `
+                <div class="col-span-full py-14 text-center bg-slate-900/50 border border-slate-800 rounded-2xl">
+                    <i class="fa-solid fa-filter-circle-xmark text-3xl text-slate-600 mb-2"></i>
+                    <h3 class="text-base font-bold text-slate-300">No Cards Match Your Filters</h3>
+                    <p class="text-xs text-slate-500 mt-1">Try resetting the filter dropdowns or opening more packs!</p>
+                </div>`;
+                return;
+            }
+
+            grid.innerHTML = filtered.map(card => {
+                const count = gameState.inventory[card.id] || 0;
+                return renderCardHTML(card, {
+                    count,
+                    unowned: count === 0,
+                    showSellBtn: true,
+                    interactive: true
+                });
+            }).join('');
+        }
+
+        function sellSingleDuplicate(cardId) {
+            const card = getAllCards().find(c => c.id === cardId);
+            if (!card) return;
+
+            const currentCount = gameState.inventory[cardId] || 0;
+            if (currentCount <= 1) {
+                showToast('You need at least 2 copies to sell a duplicate!', 'error');
+                return;
+            }
+
+            const earn = RARITY_CONFIG[card.rarity]?.sellValue || 15;
+            gameState.inventory[cardId] = currentCount - 1;
+            gameState.coins += earn;
+            saveGameState();
+
+            renderCollection();
+            if (inspectedCardId === cardId) {
+                openInspectModal(cardId);
+            }
+            showToast(`Sold duplicate "${card.name}" for +${earn} Coins!`, 'success');
+        }
+
+        function sellAllDuplicates() {
+            const { totalCoins, totalDupes } = getTotalDuplicateSellValue();
+            if (totalDupes === 0) return;
+
+            for (const card of getAllCards()) {
+                if ((gameState.inventory[card.id] || 0) > 1) {
+                    gameState.inventory[card.id] = 1;
+                }
+            }
+
+            gameState.coins += totalCoins;
+            saveGameState();
+            renderCollection();
+            showToast(`Sold ${totalDupes} duplicate card${totalDupes === 1 ? '' : 's'} for +${totalCoins.toLocaleString()} Coins!`, 'success');
+        }
+
+        // ==================== CUSTOM CARD CREATOR & POOL MANAGER ====================
+        function selectCreatorRarity(rarity) {
+            document.getElementById('custom-rarity').value = rarity;
+            document.querySelectorAll('.rarity-opt-btn').forEach(btn => {
+                if (btn.dataset.rarity === rarity) {
+                    btn.classList.add('ring-2', 'ring-amber-400', 'bg-slate-800');
+                } else {
+                    btn.classList.remove('ring-2', 'ring-amber-400', 'bg-slate-800');
+                }
+            });
+            updateCreatorPreview();
+        }
+
+        function handlePhotoUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const img = new Image();
+                img.onload = function () {
+                    // Resize & compress image via Canvas so localStorage holds dozens of custom photos smoothly
+                    const canvas = document.createElement('canvas');
+                    const maxW = 640;
+                    const maxH = 420;
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > maxW || height > maxH) {
+                        const ratio = Math.min(maxW / width, maxH / height);
+                        width = Math.round(width * ratio);
+                        height = Math.round(height * ratio);
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    uploadedPhotoDataUrl = canvas.toDataURL('image/jpeg', 0.78);
+                    document.getElementById('photo-upload-label').textContent = file.name;
+                    document.getElementById('clear-photo-btn').classList.remove('hidden');
+                    updateCreatorPreview();
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearUploadedPhoto() {
+            uploadedPhotoDataUrl = null;
+            document.getElementById('custom-photo-file').value = '';
+            document.getElementById('photo-upload-label').textContent = 'Upload Photo from Device';
+            document.getElementById('clear-photo-btn').classList.add('hidden');
+            updateCreatorPreview();
+        }
+
+        function updateCreatorPreview() {
+            const previewCard = {
+                id: 'preview',
+                name: document.getElementById('custom-name').value.trim() || 'Unnamed Transport',
+                subtitle: document.getElementById('custom-subtitle').value.trim() || 'Custom Transport Entry',
+                category: document.getElementById('custom-category').value,
+                era: document.getElementById('custom-era').value,
+                rarity: document.getElementById('custom-rarity').value,
+                image: uploadedPhotoDataUrl
+            };
+
+            document.getElementById('creator-preview-container').innerHTML = renderCardHTML(previewCard, {
+                count: 0,
+                unowned: false,
+                showSellBtn: false,
+                interactive: false
+            });
+        }
+
+        function handleCreateCard(event) {
+            event.preventDefault();
+            const name = document.getElementById('custom-name').value.trim();
+            if (!name) {
+                showToast('Please enter a name for your card!', 'error');
+                return;
+            }
+
+            const newCard = {
+                id: 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+                name,
+                subtitle: document.getElementById('custom-subtitle').value.trim(),
+                category: document.getElementById('custom-category').value,
+                era: document.getElementById('custom-era').value,
+                rarity: document.getElementById('custom-rarity').value,
+                image: uploadedPhotoDataUrl
+            };
+
+            gameState.customCards.unshift(newCard);
+
+            if (document.getElementById('custom-grant-copy').checked) {
+                gameState.inventory[newCard.id] = 1;
+            }
+
+            saveGameState();
+            renderPacks();
+            renderCardPoolManager();
+
+            // Reset form
+            document.getElementById('custom-name').value = '';
+            document.getElementById('custom-subtitle').value = '';
+            clearUploadedPhoto();
+            updateCreatorPreview();
+
+            showToast(`Minted "${newCard.name}" (${newCard.rarity}) into the pack pool!`, 'success');
+        }
+
+        function renderCardPoolManager() {
+            const list = document.getElementById('card-pool-list');
+            if (!list) return;
+
+            const allActive = getAllCards();
+            document.getElementById('pool-count-badge').textContent = allActive.length;
+
+            const query = (document.getElementById('pool-search-input')?.value || '').toLowerCase().trim();
+            const filtered = allActive.filter(c =>
+                !query || c.name.toLowerCase().includes(query) || c.category.toLowerCase().includes(query)
+            );
+
+            if (allActive.length === 0) {
+                list.innerHTML = `<p class="text-xs text-slate-500 italic py-4 text-center">Pool is empty. Mint your first card on the left!</p>`;
+                return;
+            }
+
+            if (filtered.length === 0) {
+                list.innerHTML = `<p class="text-xs text-slate-500 italic py-4 text-center">No cards match your search.</p>`;
+                return;
+            }
+
+            list.innerHTML = filtered.map(c => {
+                const rText = RARITY_CONFIG[c.rarity]?.text || 'text-slate-300';
+                return `
+                <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition-colors">
+                    <div class="min-w-0 pr-2 cursor-pointer flex-1" onclick="openInspectModal('${c.id}')">
+                        <p class="text-xs font-bold text-white truncate">${escapeHTML(c.name)}</p>
+                        <p class="text-[11px] text-slate-400 mt-0.5">${escapeHTML(c.category)} • ${escapeHTML(c.era)} • <span class="${rText} font-semibold">${escapeHTML(c.rarity)}</span></p>
+                    </div>
+                    <button onclick="promptDeleteCard('${c.id}')" title="Delete Card" class="p-2 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-950/50 transition-colors shrink-0">
+                        <i class="fa-solid fa-trash-can text-xs"></i>
+                    </button>
+                </div>
+                `;
+            }).join('');
+        }
+
+        // ==================== INSPECT & DELETE MODALS ====================
+        function openInspectModal(cardId) {
+            const card = getAllCards().find(c => c.id === cardId);
+            if (!card) return;
+
+            inspectedCardId = cardId;
+            const count = gameState.inventory[card.id] || 0;
+            const dupeCount = Math.max(0, count - 1);
+            const earn = RARITY_CONFIG[card.rarity]?.sellValue || 15;
+
+            document.getElementById('inspect-card-preview').innerHTML = renderCardHTML(card, {
+                count,
+                unowned: count === 0,
+                showSellBtn: false,
+                interactive: false
+            });
+
+            const sellBtn = document.getElementById('inspect-sell-btn');
+            sellBtn.disabled = dupeCount <= 0;
+            document.getElementById('inspect-sell-label').textContent =
+                dupeCount > 0 ? `Sell Duplicate (+${earn} Coins)` : 'No Duplicates to Sell';
+
+            document.getElementById('inspect-modal').classList.remove('hidden');
+        }
+
+        function closeInspectModal() {
+            inspectedCardId = null;
+            document.getElementById('inspect-modal').classList.add('hidden');
+        }
+
+        function sellInspectedDuplicate() {
+            if (!inspectedCardId) return;
+            sellSingleDuplicate(inspectedCardId);
+        }
+
+        function requestDeleteCardFromInspect() {
+            if (!inspectedCardId) return;
+            const id = inspectedCardId;
+            closeInspectModal();
+            promptDeleteCard(id);
+        }
+
+        function promptDeleteCard(cardId) {
+            const card = getAllCards().find(c => c.id === cardId);
+            if (!card) return;
+
+            pendingDeleteCardId = cardId;
+            document.getElementById('delete-card-message').textContent =
+                `Delete "${card.name}"? This card will be permanently removed from packs and your binder.`;
+            document.getElementById('delete-card-modal').classList.remove('hidden');
+        }
+
+        function closeDeleteCardModal() {
+            pendingDeleteCardId = null;
+            document.getElementById('delete-card-modal').classList.add('hidden');
+        }
+
+        function confirmDeleteCard() {
+            if (!pendingDeleteCardId) return;
+            const cardId = pendingDeleteCardId;
+            const card = getAllCards().find(c => c.id === cardId);
+
+            if (card) {
+                gameState.customCards = gameState.customCards.filter(c => c.id !== cardId);
+                delete gameState.inventory[cardId];
+                saveGameState();
+                renderPacks();
+                renderCardPoolManager();
+                if (!document.getElementById('view-collection').classList.contains('hidden')) {
+                    renderCollection();
+                }
+                showToast(`Deleted "${card.name}" from the card pool.`, 'info');
+            }
+            closeDeleteCardModal();
+        }
+
+        // ==================== BACKUP, IMPORT & RESET CONTROLS ====================
+        function openDataModal() {
+            document.getElementById('data-modal').classList.remove('hidden');
+        }
+
+        function closeDataModal() {
+            document.getElementById('data-modal').classList.add('hidden');
+        }
+
+        function exportDeckBackup() {
+            const dataStr = JSON.stringify(gameState, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `transitdeck-backup-${new Date().toISOString().slice(0, 10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('Exported TransitDeck JSON backup!', 'success');
+        }
+
+        function importDeckBackup(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    if (!Array.isArray(parsed.customCards)) {
+                        throw new Error('Invalid backup format');
+                    }
+                    gameState.coins = typeof parsed.coins === 'number' ? parsed.coins : 500;
+                    gameState.inventory = parsed.inventory || {};
+                    gameState.customCards = parsed.customCards;
+                    saveGameState();
+                    renderPacks();
+                    renderCollection();
+                    renderCardPoolManager();
+                    closeDataModal();
+                    showToast(`Restored ${gameState.customCards.length} custom cards from backup!`, 'success');
+                } catch (err) {
+                    showToast('Could not read backup file. Make sure it is a valid TransitDeck JSON file.', 'error');
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        }
+
+        function resetCollectionOnly() {
+            gameState.coins = 500;
+            gameState.inventory = {};
+            saveGameState();
+            renderPacks();
+            renderCollection();
+            closeDataModal();
+            showToast('Reset coins to 500 and cleared binder progress (kept your custom cards).', 'info');
+        }
+
+        function factoryResetAll() {
+            localStorage.removeItem(STORAGE_KEY);
+            gameState = {
+                coins: 500,
+                inventory: {},
+                customCards: []
+            };
+            saveGameState();
+            renderPacks();
+            renderCollection();
+            renderCardPoolManager();
+            closeDataModal();
+            showToast('Full wipe complete — card pool is completely empty.', 'info');
+        }
+
+        // ==================== UTILITIES ====================
+        function escapeHTML(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+
+            const styles = {
+                success: 'bg-slate-900 border-emerald-500/60 text-emerald-300',
+                error: 'bg-slate-900 border-rose-500/60 text-rose-300',
+                info: 'bg-slate-900 border-amber-500/60 text-amber-200'
+            };
+
+            const icons = {
+                success: 'fa-circle-check text-emerald-400',
+                error: 'fa-circle-exclamation text-rose-400',
+                info: 'fa-circle-info text-amber-400'
+            };
+
+            toast.className = `pointer-events-auto px-4 py-3 rounded-xl border shadow-2xl text-xs sm:text-sm font-semibold flex items-center gap-2.5 transition-all duration-300 ${styles[type] || styles.info}`;
+            toast.innerHTML = `<i class="fa-solid ${icons[type] || icons.info}"></i><span>${escapeHTML(message)}</span>`;
+
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(8px)';
+                setTimeout(() => toast.remove(), 300);
+            }, 3200);
+        }
+
+        // ==================== INITIALIZATION ====================
+        window.onload = function () {
+            loadGameState();
+            updateHeaderStats();
+            renderPacks();
+            updateCreatorPreview();
+            renderCardPoolManager();
+        };
+    </script>
+</body>
+</html>
